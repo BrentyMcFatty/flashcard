@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=GTK Flashcards
+Comment=Show a gentle random flashcard after desktop login
+Exec=REPLACE_WITH_FULL_PATH/flashcards
+Terminal=false
+X-GNOME-Autostart-enabled=true

@@ -23,6 +23,12 @@ typedef struct {
     guint startup_timer;
 } AppState;
 
+static void free_signal_data(gpointer data, GClosure *closure)
+{
+    (void)closure;
+    g_free(data);
+}
+
 static void show_message(GtkWindow *parent, const char *message) {
     GtkAlertDialog *dialog = gtk_alert_dialog_new("%s", message);
     gtk_alert_dialog_show(dialog, parent);
@@ -298,7 +304,7 @@ static void on_manage_clicked(GtkButton *button, gpointer data) {
         "clicked",
         G_CALLBACK(on_add_card_clicked),
         data_array,
-        (GClosureNotify)g_free,
+        free_signal_data,
         0);
 
     g_signal_connect_swapped(

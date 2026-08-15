@@ -13,6 +13,9 @@ typedef struct {
     sqlite3 *db;
 
     GtkWidget *window;
+    GtkWidget *stack;
+    GtkWidget *content_box_flashcard;
+    GtkWidget *content_box_empty;
     GtkWidget *question_label;
     GtkWidget *answer_label;
     GtkWidget *reveal_button;
@@ -76,14 +79,6 @@ static gboolean have_cards(AppState *s) {
 
     sqlite3_finalize(stmt);
     return count > 0;
-}
-
-static void set_card_text(AppState *s, const char *question, const char *answer) {
-    gtk_label_set_text(GTK_LABEL(s->question_label), question);
-    gtk_label_set_text(GTK_LABEL(s->answer_label), answer);
-
-    gtk_widget_set_visible(s->question_label, TRUE);
-    gtk_widget_set_visible(s->answer_label, TRUE);
 }
 
 static void load_random_card(AppState *s) {
@@ -316,6 +311,29 @@ static void on_manage_clicked(GtkButton *button, gpointer data) {
     gtk_window_present(GTK_WINDOW(window));
 }
 
+static GtkWidget *create_manage_button(AppState *s) {
+    GtkWidget *manage = gtk_button_new_with_label("Manage cards");
+
+    g_signal_connect(
+        manage,
+        "clicked",
+        G_CALLBACK(on_manage_clicked),
+        s);
+
+    return manage;
+}
+
+static GtkWidget *make_manage_bar(AppState *s) {
+    GtkWidget *bar =
+        gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+
+    GtkWidget *manage = create_manage_button(s);
+
+    gtk_box_append(GTK_BOX(bar), manage);
+
+    return bar;
+}
+
 static GtkWidget *make_button_bar(AppState *s) {
     GtkWidget *bar =
         gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -329,8 +347,7 @@ static GtkWidget *make_button_bar(AppState *s) {
     GtkWidget *later =
         gtk_button_new_with_label("Later");
 
-    GtkWidget *manage =
-        gtk_button_new_with_label("Manage cards");
+    GtkWidget *manage = create_manage_button(s);
 
     g_signal_connect(
         reveal,
@@ -350,12 +367,6 @@ static GtkWidget *make_button_bar(AppState *s) {
         G_CALLBACK(on_close_clicked),
         s);
 
-    g_signal_connect(
-        manage,
-        "clicked",
-        G_CALLBACK(on_manage_clicked),
-        s);
-
     gtk_box_append(GTK_BOX(bar), reveal);
     gtk_box_append(GTK_BOX(bar), next);
     gtk_box_append(GTK_BOX(bar), later);
@@ -366,22 +377,25 @@ static GtkWidget *make_button_bar(AppState *s) {
     return bar;
 }
 
-static void create_main_window(AppState *s) {
-    s->window = gtk_application_window_new(s->app);
+static void show_flashcard_view(AppState *s) {
+    GtkWidget *content_box = s->content_box_flashcard;
 
-    gtk_window_set_title(
-        GTK_WINDOW(s->window),
-        "Flashcard");
+    gtk_stack_set_visible_child(
+        GTK_STACK(s->stack),
+        content_box);
 
-    gtk_window_set_default_size(
-        GTK_WINDOW(s->window),
-        550,
-        350);
+    load_random_card(s);
+}
 
-    gtk_window_set_resizable(
-        GTK_WINDOW(s->window),
-        FALSE);
+static void show_no_cards_view(AppState *s) {
+    GtkWidget *content_box = s->content_box_empty;
 
+    gtk_stack_set_visible_child(
+        GTK_STACK(s->stack),
+        content_box);
+}
+
+static GtkWidget *create_box() {
     GtkWidget *box =
         gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
 
@@ -389,6 +403,48 @@ static void create_main_window(AppState *s) {
     gtk_widget_set_margin_bottom(box, 30);
     gtk_widget_set_margin_start(box, 30);
     gtk_widget_set_margin_end(box, 30);
+
+    return box;
+}
+
+static void create_empty_box(AppState *s) {
+    GtkWidget *content_box_no_cards = create_box();
+
+    s->content_box_empty = content_box_no_cards;
+
+    GtkWidget *heading =
+        gtk_label_new("No flashcards yet!");
+
+    gtk_widget_add_css_class(
+        heading,
+        "title-1");
+
+    gtk_box_append(
+        GTK_BOX(content_box_no_cards),
+        heading);
+
+    GtkWidget *tip =
+        gtk_label_new("Add some cards to get started");
+
+    gtk_widget_add_css_class(
+        tip,
+        "title-2");
+
+    gtk_box_append(
+        GTK_BOX(content_box_no_cards),
+        tip);
+
+    GtkWidget *manage_bar = make_manage_bar(s);
+
+    gtk_box_append(
+        GTK_BOX(content_box_no_cards),
+        manage_bar);
+}
+
+static void create_flashcard_box(AppState *s) {
+    GtkWidget *content_box_flashcard = create_box();
+
+    s->content_box_flashcard = content_box_flashcard;
 
     GtkWidget *heading =
         gtk_label_new("Today's flashcard");
@@ -398,7 +454,7 @@ static void create_main_window(AppState *s) {
         "title-1");
 
     gtk_box_append(
-        GTK_BOX(box),
+        GTK_BOX(content_box_flashcard),
         heading);
 
     s->question_label =
@@ -417,7 +473,7 @@ static void create_main_window(AppState *s) {
         "title-2");
 
     gtk_box_append(
-        GTK_BOX(box),
+        GTK_BOX(content_box_flashcard),
         s->question_label);
 
     s->answer_label =
@@ -432,19 +488,52 @@ static void create_main_window(AppState *s) {
         PANGO_WRAP_WORD_CHAR);
 
     gtk_box_append(
-        GTK_BOX(box),
+        GTK_BOX(content_box_flashcard),
         s->answer_label);
 
     GtkWidget *buttons =
         make_button_bar(s);
 
     gtk_box_append(
-        GTK_BOX(box),
+        GTK_BOX(content_box_flashcard),
         buttons);
+}
+
+static void create_main_window(AppState *s) {
+    s->window = gtk_application_window_new(s->app);
+
+    gtk_window_set_title(
+        GTK_WINDOW(s->window),
+        "Flashcard");
+
+    gtk_window_set_default_size(
+        GTK_WINDOW(s->window),
+        550,
+        350);
+
+    gtk_window_set_resizable(
+        GTK_WINDOW(s->window),
+        FALSE);
+
+    GtkWidget *stack =
+        gtk_stack_new();
+
+    create_empty_box(s);
+    create_flashcard_box(s);
+
+    gtk_stack_add_child(
+        GTK_STACK(stack),
+        s->content_box_empty);
+
+    gtk_stack_add_child(
+        GTK_STACK(stack),
+        s->content_box_flashcard);
+
+    s->stack = stack;
 
     gtk_window_set_child(
         GTK_WINDOW(s->window),
-        box);
+        stack);
 
     /* Do not force the flashcard above other windows. */
     gtk_window_set_focus_visible(
@@ -453,12 +542,18 @@ static void create_main_window(AppState *s) {
 }
 
 static gboolean delayed_start(gpointer data) {
+    g_print("delayed_start() was called!\n");
+
     AppState *s = data;
 
     s->startup_timer = 0;
 
     if (have_cards(s))
-        load_random_card(s);
+        show_flashcard_view(s);
+    else
+        show_no_cards_view(s);
+
+    gtk_window_present(GTK_WINDOW(s->window));
 
     return G_SOURCE_REMOVE;
 }
@@ -466,6 +561,8 @@ static gboolean delayed_start(gpointer data) {
 static void app_activate(
     GtkApplication *app,
     gpointer user_data) {
+
+    g_print("app_activate() was called!\n");
 
     AppState *s = user_data;
 
@@ -516,7 +613,19 @@ static void app_shutdown(
     }
 }
 
+static void on_startup(
+    GtkApplication *app,
+    gpointer data)
+{
+    (void)app;
+    (void)data;
+
+    g_print("GTK startup signal!\n");
+}
+
 int main(int argc, char **argv) {
+    g_print("main() started!\n");
+
     AppState state = {0};
 
     GtkApplication *app =
@@ -524,11 +633,21 @@ int main(int argc, char **argv) {
             APP_ID,
             G_APPLICATION_DEFAULT_FLAGS);
 
+    g_print("GtkApplication created!\n");
+
+    g_signal_connect(
+        app,
+        "startup",
+        G_CALLBACK(on_startup),
+        &state);
+
     g_signal_connect(
         app,
         "activate",
         G_CALLBACK(app_activate),
         &state);
+
+    g_print("activate signal connected!\n");
 
     g_signal_connect(
         app,
@@ -536,11 +655,15 @@ int main(int argc, char **argv) {
         G_CALLBACK(app_shutdown),
         &state);
 
+    g_print("shutdown signal connected!\n");
+
     int status =
         g_application_run(
             G_APPLICATION(app),
             argc,
             argv);
+
+    g_print("g_application_run() returned!\n");
 
     g_object_unref(app);
 

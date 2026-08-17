@@ -26,6 +26,11 @@ typedef struct {
     guint startup_timer;
 } AppState;
 
+typedef struct {
+    GtkWidget *window;
+    AppState *s;
+} CloseCallbackData;
+
 static void free_signal_data(gpointer data, GClosure *closure)
 {
     (void)closure;
@@ -122,6 +127,24 @@ static void load_random_card(AppState *s) {
     sqlite3_finalize(stmt);
 }
 
+static void show_flashcard_view(AppState *s) {
+    GtkWidget *content_box = s->content_box_flashcard;
+
+    gtk_stack_set_visible_child(
+        GTK_STACK(s->stack),
+        content_box);
+
+    load_random_card(s);
+}
+
+static void show_no_cards_view(AppState *s) {
+    GtkWidget *content_box = s->content_box_empty;
+
+    gtk_stack_set_visible_child(
+        GTK_STACK(s->stack),
+        content_box);
+}
+
 static void on_reveal_clicked(GtkButton *button, gpointer data) {
     AppState *s = data;
 
@@ -215,6 +238,21 @@ static void on_add_card_clicked(GtkButton *button, gpointer data) {
         GTK_EDITABLE(answer_entry), "");
 }
 
+static void close_manager(GtkButton *button, gpointer data) {
+    (void)button;
+
+    CloseCallbackData *callback_data = data;
+
+    GtkWidget *window = callback_data->window;
+    AppState *s = callback_data->s;
+
+    show_flashcard_view(s);
+
+    gtk_window_destroy(GTK_WINDOW(window));
+
+    g_free(callback_data);
+}
+
 static void on_manage_clicked(GtkButton *button, gpointer data) {
     (void)button;
 
@@ -302,11 +340,16 @@ static void on_manage_clicked(GtkButton *button, gpointer data) {
         free_signal_data,
         0);
 
-    g_signal_connect_swapped(
+    CloseCallbackData *callback_data = g_new(CloseCallbackData, 1);
+
+    callback_data->window = window;
+    callback_data->s = s;
+
+    g_signal_connect(
         close,
         "clicked",
-        G_CALLBACK(gtk_window_destroy),
-        window);
+        G_CALLBACK(close_manager),
+        callback_data);
 
     gtk_window_present(GTK_WINDOW(window));
 }
@@ -394,24 +437,6 @@ static GtkWidget *make_button_bar(AppState *s) {
     s->reveal_button = reveal;
 
     return grid;
-}
-
-static void show_flashcard_view(AppState *s) {
-    GtkWidget *content_box = s->content_box_flashcard;
-
-    gtk_stack_set_visible_child(
-        GTK_STACK(s->stack),
-        content_box);
-
-    load_random_card(s);
-}
-
-static void show_no_cards_view(AppState *s) {
-    GtkWidget *content_box = s->content_box_empty;
-
-    gtk_stack_set_visible_child(
-        GTK_STACK(s->stack),
-        content_box);
 }
 
 static GtkWidget *create_box() {

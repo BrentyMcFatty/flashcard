@@ -6,7 +6,7 @@
 
 #define APP_ID "com.example.GTKFlashcards"
 #define DB_FILE "flashcards.db"
-#define DEFAULT_DELAY_SECONDS 30
+#define DEFAULT_DELAY_SECONDS 1
 
 typedef struct {
     GtkApplication *app;
@@ -314,6 +314,8 @@ static void on_manage_clicked(GtkButton *button, gpointer data) {
 static GtkWidget *create_manage_button(AppState *s) {
     GtkWidget *manage = gtk_button_new_with_label("Manage cards");
 
+    gtk_widget_set_hexpand(manage, TRUE);
+
     g_signal_connect(
         manage,
         "clicked",
@@ -324,28 +326,45 @@ static GtkWidget *create_manage_button(AppState *s) {
 }
 
 static GtkWidget *make_manage_bar(AppState *s) {
-    GtkWidget *bar =
-        gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *grid =
+        gtk_grid_new();
+
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 20);
+    gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
+
+    gtk_widget_set_hexpand(grid, TRUE);
+    gtk_widget_set_vexpand(grid, TRUE);
+    gtk_widget_set_valign(grid, GTK_ALIGN_END);
 
     GtkWidget *manage = create_manage_button(s);
 
-    gtk_box_append(GTK_BOX(bar), manage);
+    gtk_grid_attach(GTK_GRID(grid), manage, 0, 0, 1, 1);
 
-    return bar;
+    return grid;
 }
 
 static GtkWidget *make_button_bar(AppState *s) {
-    GtkWidget *bar =
-        gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    GtkWidget *grid =
+        gtk_grid_new();
+
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 20);
+    gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
+
+    gtk_widget_set_hexpand(grid, TRUE);
+    gtk_widget_set_vexpand(grid, TRUE);
+    gtk_widget_set_valign(grid, GTK_ALIGN_END);
 
     GtkWidget *reveal =
         gtk_button_new_with_label("Reveal answer");
+    gtk_widget_set_hexpand(reveal, TRUE);
 
     GtkWidget *next =
         gtk_button_new_with_label("Next");
+    gtk_widget_set_hexpand(next, TRUE);
 
     GtkWidget *later =
         gtk_button_new_with_label("Later");
+    gtk_widget_set_hexpand(later, TRUE);
 
     GtkWidget *manage = create_manage_button(s);
 
@@ -367,14 +386,14 @@ static GtkWidget *make_button_bar(AppState *s) {
         G_CALLBACK(on_close_clicked),
         s);
 
-    gtk_box_append(GTK_BOX(bar), reveal);
-    gtk_box_append(GTK_BOX(bar), next);
-    gtk_box_append(GTK_BOX(bar), later);
-    gtk_box_append(GTK_BOX(bar), manage);
+    gtk_grid_attach(GTK_GRID(grid), reveal, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), next, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), later, 2, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), manage, 3, 0, 1, 1);
 
     s->reveal_button = reveal;
 
-    return bar;
+    return grid;
 }
 
 static void show_flashcard_view(AppState *s) {
@@ -403,6 +422,8 @@ static GtkWidget *create_box() {
     gtk_widget_set_margin_bottom(box, 30);
     gtk_widget_set_margin_start(box, 30);
     gtk_widget_set_margin_end(box, 30);
+
+    gtk_widget_set_vexpand(box, TRUE);
 
     return box;
 }

@@ -188,10 +188,6 @@ static void on_add_card_clicked(GtkButton *button, gpointer data) {
 
     ManageState *ms = data;
 
-    AppState *s = g_object_get_data(
-        G_OBJECT(ms->window),
-        "app-state");
-
     const char *question =
         gtk_editable_get_text(GTK_EDITABLE(ms->question_entry));
 
@@ -212,7 +208,7 @@ static void on_add_card_clicked(GtkButton *button, gpointer data) {
         "VALUES (?, ?)";
 
     if (sqlite3_prepare_v2(
-            s->db,
+            ms->s->db,
             sql,
             -1,
             &stmt,

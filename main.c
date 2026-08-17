@@ -27,6 +27,16 @@ typedef struct {
 } AppState;
 
 typedef struct {
+    AppState *s;
+
+    GtkWidget *window;
+    GtkWidget *stack;
+
+    GtkWidget *question_entry;
+    GtkWidget *answer_entry;
+} ManageState;
+
+typedef struct {
     GtkWidget *window;
     AppState *s;
 } CloseCallbackData;
@@ -176,25 +186,21 @@ static void on_close_clicked(GtkButton *button, gpointer data) {
 static void on_add_card_clicked(GtkButton *button, gpointer data) {
     (void)button;
 
-    GtkWidget **widgets = data;
-
-    GtkWidget *window = widgets[0];
-    GtkWidget *question_entry = widgets[1];
-    GtkWidget *answer_entry = widgets[2];
+    ManageState *ms = data;
 
     AppState *s = g_object_get_data(
-        G_OBJECT(window),
+        G_OBJECT(ms->window),
         "app-state");
 
     const char *question =
-        gtk_editable_get_text(GTK_EDITABLE(question_entry));
+        gtk_editable_get_text(GTK_EDITABLE(ms->question_entry));
 
     const char *answer =
-        gtk_editable_get_text(GTK_EDITABLE(answer_entry));
+        gtk_editable_get_text(GTK_EDITABLE(ms->answer_entry));
 
     if (!*question || !*answer) {
         show_message(
-            GTK_WINDOW(window),
+            GTK_WINDOW(ms->window),
             "Please enter both a question and an answer.");
         return;
     }
@@ -212,7 +218,7 @@ static void on_add_card_clicked(GtkButton *button, gpointer data) {
             &stmt,
             NULL) != SQLITE_OK) {
         show_message(
-            GTK_WINDOW(window),
+            GTK_WINDOW(ms->window),
             "Could not prepare database query.");
         return;
     }
@@ -225,54 +231,30 @@ static void on_add_card_clicked(GtkButton *button, gpointer data) {
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {
         show_message(
-            GTK_WINDOW(window),
+            GTK_WINDOW(ms->window),
             "Could not save the flashcard.");
     }
 
     sqlite3_finalize(stmt);
 
     gtk_editable_set_text(
-        GTK_EDITABLE(question_entry), "");
+        GTK_EDITABLE(ms->question_entry), "");
 
     gtk_editable_set_text(
-        GTK_EDITABLE(answer_entry), "");
+        GTK_EDITABLE(ms->answer_entry), "");
 }
 
 static void close_manager(GtkButton *button, gpointer data) {
     (void)button;
 
-    CloseCallbackData *callback_data = data;
+    ManageState* ms = data;
 
-    GtkWidget *window = callback_data->window;
-    AppState *s = callback_data->s;
+    show_flashcard_view(ms->s);
 
-    show_flashcard_view(s);
-
-    gtk_window_destroy(GTK_WINDOW(window));
-
-    g_free(callback_data);
+    gtk_window_destroy(GTK_WINDOW(ms->window));
 }
 
-static void on_manage_clicked(GtkButton *button, gpointer data) {
-    (void)button;
-
-    AppState *s = data;
-
-    GtkWidget *window = gtk_window_new();
-
-    gtk_window_set_title(
-        GTK_WINDOW(window),
-        "Manage Flashcards");
-
-    gtk_window_set_default_size(
-        GTK_WINDOW(window),
-        500,
-        300);
-
-    gtk_window_set_transient_for(
-        GTK_WINDOW(window),
-        GTK_WINDOW(s->window));
-
+static GtkWidget *create_add_box(ManageState* ms) {
     GtkWidget *box =
         gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 
@@ -288,28 +270,72 @@ static void on_manage_clicked(GtkButton *button, gpointer data) {
 
     gtk_box_append(GTK_BOX(box), title);
 
-    GtkWidget *question =
+    ms->question_entry =
         gtk_entry_new();
 
     gtk_entry_set_placeholder_text(
-        GTK_ENTRY(question),
+        GTK_ENTRY(ms->question_entry),
         "Question");
 
-    gtk_box_append(GTK_BOX(box), question);
+    gtk_box_append(GTK_BOX(box), ms->question_entry);
 
-    GtkWidget *answer =
+    ms->answer_entry =
         gtk_entry_new();
 
     gtk_entry_set_placeholder_text(
-        GTK_ENTRY(answer),
+        GTK_ENTRY(ms->answer_entry),
         "Answer");
 
-    gtk_box_append(GTK_BOX(box), answer);
+    gtk_box_append(GTK_BOX(box), ms->answer_entry);
 
     GtkWidget *add =
         gtk_button_new_with_label("Add flashcard");
 
     gtk_box_append(GTK_BOX(box), add);
+
+    g_signal_connect(
+        add,
+        "clicked",
+        G_CALLBACK(on_add_card_clicked),
+        ms);
+
+    return box;
+}
+
+static void on_manage_clicked(GtkButton *button, gpointer data) {
+    (void)button;
+
+    AppState *s = data;
+
+    ManageState *ms = g_new(ManageState, 1);
+    ms->s = s;
+
+    ms->window = gtk_window_new();
+
+    gtk_window_set_title(
+        GTK_WINDOW(ms->window),
+        "Manage Flashcards");
+
+    gtk_window_set_default_size(
+        GTK_WINDOW(ms->window),
+        500,
+        300);
+
+    gtk_window_set_transient_for(
+        GTK_WINDOW(ms->window),
+        GTK_WINDOW(s->window));
+
+    GtkWidget *box =
+        gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+
+    gtk_widget_set_margin_top(box, 20);
+    gtk_widget_set_margin_bottom(box, 20);
+    gtk_widget_set_margin_start(box, 20);
+    gtk_widget_set_margin_end(box, 20);
+
+    GtkWidget *add_box = create_add_box(ms);
+
+    gtk_box_append(GTK_BOX(box), add_box);
 
     GtkWidget *close =
         gtk_button_new_with_label("Close");
@@ -317,41 +343,21 @@ static void on_manage_clicked(GtkButton *button, gpointer data) {
     gtk_box_append(GTK_BOX(box), close);
 
     gtk_window_set_child(
-        GTK_WINDOW(window),
+        GTK_WINDOW(ms->window),
         box);
 
     g_object_set_data(
-        G_OBJECT(window),
+        G_OBJECT(ms->window),
         "app-state",
         s);
-
-    GtkWidget **data_array =
-        g_new(GtkWidget *, 3);
-
-    data_array[0] = window;
-    data_array[1] = question;
-    data_array[2] = answer;
-
-    g_signal_connect_data(
-        add,
-        "clicked",
-        G_CALLBACK(on_add_card_clicked),
-        data_array,
-        free_signal_data,
-        0);
-
-    CloseCallbackData *callback_data = g_new(CloseCallbackData, 1);
-
-    callback_data->window = window;
-    callback_data->s = s;
 
     g_signal_connect(
         close,
         "clicked",
         G_CALLBACK(close_manager),
-        callback_data);
+        ms);
 
-    gtk_window_present(GTK_WINDOW(window));
+    gtk_window_present(GTK_WINDOW(ms->window));
 }
 
 static GtkWidget *create_manage_button(AppState *s) {

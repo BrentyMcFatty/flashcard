@@ -4,12 +4,16 @@ CFLAGS := $(shell pkg-config --cflags gtk4 sqlite3) -Wall -Wextra -O2
 LIBS := $(shell pkg-config --libs gtk4 sqlite3)
 
 TARGET = flashcards
-SRC = main.c
+SRC = main.c manager.c
+OBJ = $(SRC:.c=.o)
 
 all: $(TARGET)
 
-$(TARGET): $(SRC)
+$(TARGET): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+%.o: %.c manager.h states.h util.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 install-autostart:
 	mkdir -p ~/.config/autostart

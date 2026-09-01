@@ -77,7 +77,7 @@ open the card when clicked.
 
 ## Changing the delay
 
-At the top of `main.c`:
+At the top of `src/main.c`:
 
     #define DEFAULT_DELAY_SECONDS 30
 

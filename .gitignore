@@ -1,0 +1,9 @@
+# executable + needed files
+flashcards
+flashcards.db
+
+# object files
+*.o
+
+# idea files
+.idea/

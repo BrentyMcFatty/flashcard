@@ -33,6 +33,8 @@ typedef struct {
 
     GtkWidget *window;
     GtkWidget *stack;
+    GtkWidget *content_box_adding;
+    GtkWidget *content_box_overview;
 
     GtkWidget *question_entry;
     GtkWidget *answer_entry;

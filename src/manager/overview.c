@@ -140,29 +140,6 @@ static GtkWidget *create_question_view(ManageState *ms) {
     GtkWidget *header_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_widget_set_hexpand(header_box, TRUE);
 
-    // Create header labels
-    GtkWidget *id_header = gtk_label_new("ID");
-    GtkWidget *question_header = gtk_label_new("Question");
-    GtkWidget *answer_header = gtk_label_new("Answer");
-
-    // Style the header labels (bold and left-aligned)
-    gtk_label_set_xalign(GTK_LABEL(id_header), 0.0f);
-    gtk_label_set_xalign(GTK_LABEL(question_header), 0.0f);
-    gtk_label_set_xalign(GTK_LABEL(answer_header), 0.0f);
-    gtk_widget_add_css_class(id_header, "bold");
-    gtk_widget_add_css_class(question_header, "bold");
-    gtk_widget_add_css_class(answer_header, "bold");
-
-    // Expand the header labels
-    gtk_widget_set_hexpand(id_header, TRUE);
-    gtk_widget_set_hexpand(question_header, TRUE);
-    gtk_widget_set_hexpand(answer_header, TRUE);
-
-    // Pack the header labels into the header box
-    gtk_box_append(GTK_BOX(header_box), id_header);
-    gtk_box_append(GTK_BOX(header_box), question_header);
-    gtk_box_append(GTK_BOX(header_box), answer_header);
-
     // Add the header box to the vertical box
     gtk_box_append(GTK_BOX(vbox), header_box);
 

@@ -12,10 +12,14 @@ pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
 
 add_executable(flashcards
         src/main.c
-        src/manager.c
-        src/manager.h
+        src/manager/manager.c
+        src/manager/manager.h
         src/states.h
         src/util.h
+        src/manager/add.c
+        src/manager/add.h
+        src/manager/overview.c
+        src/manager/overview.h
 )
 
 target_link_libraries(flashcards

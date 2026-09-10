@@ -1,6 +1,6 @@
 #include <gtk/gtk.h>
 #include <sqlite3.h>
-#include "manager.h"
+#include "manager/manager.h"
 #include "states.h"
 #include "util.h"
 

@@ -5,7 +5,7 @@
 #ifndef GTKFLASHCARDS_MANAGER_H
 #define GTKFLASHCARDS_MANAGER_H
 
-#include "states.h"
+#include "../states.h"
 
 void show_manager(AppState *s);
 

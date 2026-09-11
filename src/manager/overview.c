@@ -62,6 +62,21 @@ static char *get_sort_column(SortColumn sort_type) {
     }
 }
 
+static void set_total_rows(ManageState *ms) {
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "SELECT COUNT(*) FROM flashcards";
+
+    if (sqlite3_prepare_v2(ms->s->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        show_message(GTK_WINDOW(ms->window), "Could not read the flashcard database.");
+        sqlite3_finalize(stmt);
+    }
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        int count = sqlite3_column_int(stmt, 0);
+        ms->total_rows = count;
+    }
+}
+
 static char *get_sort_direction(SortDirection direction) {
     return direction == SORT_ASC ? "ASC" : "DESC";
 }
@@ -113,7 +128,7 @@ static GListModel *create_model(ManageState *ms) {
 static void
 update_pagination_controls(ManageState *ms)
 {
-    char *page_number = g_strdup_printf("%d", ms->page);
+    char *page_number = g_strdup_printf("%d", ms->page + 1);
     gtk_label_set_text(GTK_LABEL(ms->page_label), page_number);
 }
 
@@ -126,9 +141,6 @@ reload_page(ManageState *ms)
 
     GtkSingleSelection *selection_model = gtk_single_selection_new(model);
     gtk_list_view_set_model(ms->list_view, GTK_SELECTION_MODEL(selection_model));
-
-    g_object_unref(model);
-
     update_pagination_controls(ms);
 }
 
@@ -158,11 +170,26 @@ sort_clicked(GtkButton *button, gpointer user_data)
 }
 
 static void
-next_clicked(GtkButton *button, gpointer user_data)
+previous_clicked(GtkButton *button, gpointer user_data)
 {
+    (void)button;
+
     ManageState *ms = user_data;
 
-    guint total_pages =
+    if (ms->page - 1 >= 0) {
+        ms->page--;
+        reload_page(ms);
+    }
+}
+
+static void
+next_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+
+    ManageState *ms = user_data;
+
+    gint total_pages =
         (ms->total_rows + ms->page_size - 1) /
         ms->page_size;
 
@@ -296,9 +323,10 @@ static GtkWidget *create_question_view(ManageState *ms) {
 
 GtkWidget *create_overview_box(ManageState *ms) {
     ms->page = 0;
-    ms->page_size = 20;
+    ms->page_size = 5;
     ms->sort_column = ID;
     ms->sort_direction = SORT_ASC;
+    set_total_rows(ms);
 
     GtkWidget *box =
         gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -322,6 +350,38 @@ GtkWidget *create_overview_box(ManageState *ms) {
     gtk_widget_set_vexpand(question_view, TRUE);
 
     gtk_box_append(GTK_BOX(box), question_view);
+
+    GtkWidget *paging_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_hexpand(paging_box, TRUE);
+
+    GtkWidget *previous_button = gtk_button_new_with_label("Previous");
+    GtkWidget *next_button = gtk_button_new_with_label("Next");
+    GtkWidget *page_label = gtk_label_new("1");
+    gtk_widget_set_hexpand(previous_button, TRUE);
+    gtk_widget_set_hexpand(next_button, TRUE);
+    gtk_widget_set_hexpand(page_label, TRUE);
+
+    ms->page_label = GTK_LABEL(page_label);
+
+    g_signal_connect(
+        previous_button,
+        "clicked",
+        G_CALLBACK(previous_clicked),
+        ms
+    );
+
+    g_signal_connect(
+        next_button,
+        "clicked",
+        G_CALLBACK(next_clicked),
+        ms
+    );
+
+    gtk_box_append(GTK_BOX(paging_box), previous_button);
+    gtk_box_append(GTK_BOX(paging_box), page_label);
+    gtk_box_append(GTK_BOX(paging_box), next_button);
+
+    gtk_box_append(GTK_BOX(box), paging_box);
 
     return box;
 }

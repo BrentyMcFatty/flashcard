@@ -28,6 +28,17 @@ typedef struct AppState {
     void (*show_flashcard_view)(struct AppState *self);
 } AppState;
 
+typedef enum {
+    ID,
+    QUESTION,
+    ANSWER
+} SortColumn;
+
+typedef enum {
+    SORT_ASC,
+    SORT_DESC
+} SortDirection;
+
 typedef struct {
     AppState *s;
 
@@ -38,6 +49,18 @@ typedef struct {
 
     GtkWidget *question_entry;
     GtkWidget *answer_entry;
+
+    // overview specific
+    gint page;
+    gint page_size;
+
+    SortColumn sort_column;
+    SortDirection sort_direction;
+
+    gint total_rows;
+
+    GtkListView *list_view;
+    GtkLabel *page_label;
 } ManageState;
 
 #endif // GTKFLASHCARDS_STATES_H

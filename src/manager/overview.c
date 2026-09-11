@@ -52,19 +52,45 @@ static RowData *row_data_new(
     return row;
 }
 
+static char *get_sort_column(SortColumn sort_type) {
+    switch (sort_type) {
+        case ID: return "id";
+        case QUESTION: return "question";
+        case ANSWER: return "answer";
+        default:
+            g_assert_not_reached();
+    }
+}
+
+static char *get_sort_direction(SortDirection direction) {
+    return direction == SORT_ASC ? "ASC" : "DESC";
+}
+
 static GListModel *create_model(ManageState *ms) {
     // --- Create the list store and populate it ---
     GListStore *store = g_list_store_new(G_TYPE_OBJECT);
 
     // Add data from SQLite
     sqlite3_stmt *stmt = NULL;
-    const char *sql = "SELECT id, question, answer FROM flashcards";
+    const char *sql = g_strdup_printf(
+                      "SELECT "
+                      "id, question, answer "
+                      "FROM flashcards "
+                      "ORDER BY %s %s "
+                      "LIMIT ? OFFSET ?",
+                      get_sort_column(ms->sort_column),
+                      get_sort_direction(ms->sort_direction)
+                      );
 
     if (sqlite3_prepare_v2(ms->s->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         show_message(GTK_WINDOW(ms->window), "Could not read the flashcard database.");
         sqlite3_finalize(stmt);
         return G_LIST_MODEL(store);
     }
+
+    const gint offset = ms->page * ms->page_size;
+    sqlite3_bind_int(stmt, 1, ms->page_size);
+    sqlite3_bind_int(stmt, 2, offset);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         int id = sqlite3_column_int(stmt, 0);
@@ -78,58 +104,139 @@ static GListModel *create_model(ManageState *ms) {
     }
     sqlite3_finalize(stmt);
 
+    g_print("Store items: %u\n",
+        g_list_model_get_n_items(G_LIST_MODEL(store)));
+
     return G_LIST_MODEL(store);
 }
 
-// Setup function for the factory
-static void setup_factory(GtkSignalListItemFactory *factory, GtkListItem *list_item, gpointer user_data) {
-    (void)factory;
-    (void)user_data;
-
-    // Create a label for the cell
-    GtkWidget *label = gtk_label_new("");
-    gtk_label_set_xalign(GTK_LABEL (label), 0.0f); // Align left
-    gtk_list_item_set_child(list_item, label);
+static void
+update_pagination_controls(ManageState *ms)
+{
+    char *page_number = g_strdup_printf("%d", ms->page);
+    gtk_label_set_text(GTK_LABEL(ms->page_label), page_number);
 }
 
-// Bind function for the factory
-static void bind_factory(GtkSignalListItemFactory *factory, GtkListItem *list_item, gpointer user_data) {
-    (void)factory;
+static void
+reload_page(ManageState *ms)
+{
+    GListModel *model = create_model(
+        ms
+    );
 
-    const char *property_name = (const char *)user_data;
-    GtkWidget *label = gtk_list_item_get_child (list_item);
-    GObject *item = gtk_list_item_get_item (list_item);
+    GtkSingleSelection *selection_model = gtk_single_selection_new(model);
+    gtk_list_view_set_model(ms->list_view, GTK_SELECTION_MODEL(selection_model));
 
-    // Get the row data from the item
-    RowData *row = ROW_DATA(item);
+    g_object_unref(model);
 
-    // Set the label text based on the property name
-    if (g_strcmp0 (property_name, "id") == 0) {
-        char *text = g_strdup_printf ("%d", row->id);
-        gtk_label_set_text (GTK_LABEL (label), text);
-        g_free (text);
-    } else if (g_strcmp0 (property_name, "question") == 0) {
-        gtk_label_set_text (GTK_LABEL (label), row->question);
-    } else if (g_strcmp0 (property_name, "answer") == 0) {
-        gtk_label_set_text (GTK_LABEL (label), row->answer);
+    update_pagination_controls(ms);
+}
+
+static void
+sort_clicked(GtkButton *button, gpointer user_data)
+{
+    ManageState *ms = user_data;
+
+    SortColumn column = GPOINTER_TO_INT(
+        g_object_get_data(G_OBJECT(button), "sort-column")
+    );
+
+    if (ms->sort_column == column) {
+        ms->sort_direction =
+            ms->sort_direction == SORT_ASC
+                ? SORT_DESC
+                : SORT_ASC;
+    } else {
+        ms->sort_column = column;
+        ms->sort_direction = SORT_ASC;
+    }
+
+    /* Sorting starts from the first page. */
+    ms->page = 0;
+
+    reload_page(ms);
+}
+
+static void
+next_clicked(GtkButton *button, gpointer user_data)
+{
+    ManageState *ms = user_data;
+
+    guint total_pages =
+        (ms->total_rows + ms->page_size - 1) /
+        ms->page_size;
+
+    if (ms->page + 1 < total_pages) {
+        ms->page++;
+        reload_page(ms);
     }
 }
 
-// Function to create a column for the column view
-static GtkColumnViewColumn *create_column(const char *title, const char *property_name) {
-    // Create a factory for the cells in this column
-    GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
+// Setup function for the factory
+static void
+setup_factory(GtkSignalListItemFactory *factory,
+              GtkListItem *list_item)
+{
+    (void)factory;
 
-    GtkColumnViewColumn *column = gtk_column_view_column_new(title, factory);
+    GtkWidget* hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
 
-    // Set up the factory to create and bind cells
-    g_signal_connect(factory, "setup", G_CALLBACK (setup_factory), NULL);
-    g_signal_connect(factory, "bind", G_CALLBACK (bind_factory), (gpointer)property_name);
+    GtkWidget *grid = gtk_grid_new();
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
+    gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
 
-    // Add the factory to the column
-    gtk_column_view_column_set_factory(column, factory);
+    GtkWidget *id_label = gtk_label_new("");
+    GtkWidget *question_label = gtk_label_new("");
+    GtkWidget *answer_label = gtk_label_new("");
 
-    return column;
+    gtk_widget_set_size_request(id_label, 8, 8);
+    gtk_widget_set_hexpand(id_label, FALSE);
+    gtk_widget_set_hexpand(question_label, TRUE);
+    gtk_widget_set_hexpand(answer_label, TRUE);
+
+    gtk_label_set_xalign(GTK_LABEL(id_label), 0.0f);
+    gtk_label_set_xalign(GTK_LABEL(question_label), 0.0f);
+    gtk_label_set_xalign(GTK_LABEL(answer_label), 0.0f);
+
+    gtk_grid_attach(GTK_GRID(grid), question_label, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), answer_label, 1, 0, 1, 1);
+
+    g_object_set_data(G_OBJECT(hbox), "id", id_label);
+    g_object_set_data(G_OBJECT(hbox), "question", question_label);
+    g_object_set_data(G_OBJECT(hbox), "answer", answer_label);
+
+    gtk_box_append(GTK_BOX(hbox), id_label);
+    gtk_box_append(GTK_BOX(hbox), grid);
+
+    gtk_list_item_set_child(list_item, hbox);
+}
+
+// Bind function for the factory
+static void bind_factory(GtkSignalListItemFactory *factory, GtkListItem *list_item) {
+    (void)factory;
+
+    GtkWidget *hbox =
+        gtk_list_item_get_child(list_item);
+
+    RowData *row =
+        ROW_DATA(gtk_list_item_get_item(list_item));
+
+    GtkWidget *id_label =
+        g_object_get_data(G_OBJECT(hbox), "id");
+
+    GtkWidget *question_label =
+        g_object_get_data(G_OBJECT(hbox), "question");
+
+    GtkWidget *answer_label =
+        g_object_get_data(G_OBJECT(hbox), "answer");
+
+    char *id = g_strdup_printf("%d", row->id);
+
+    gtk_label_set_text(GTK_LABEL(id_label), id);
+    gtk_label_set_text(GTK_LABEL(question_label), row->question);
+    gtk_label_set_text(GTK_LABEL(answer_label), row->answer);
+
+    g_free(id);
 }
 
 static GtkWidget *create_question_view(ManageState *ms) {
@@ -137,46 +244,62 @@ static GtkWidget *create_question_view(ManageState *ms) {
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
     // --- Create the header row ---
-    GtkWidget *header_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
-    gtk_widget_set_hexpand(header_box, TRUE);
+    GtkWidget *header_grid = gtk_grid_new();
+    gtk_widget_set_hexpand(header_grid, TRUE);
+    gtk_grid_set_column_homogeneous(GTK_GRID(header_grid), FALSE);
+
+    GtkWidget *id_header = gtk_label_new("ID");
+    GtkWidget *question_header = gtk_label_new("Question");
+    GtkWidget *answer_header = gtk_label_new("Answer");
+
+    gtk_widget_add_css_class(id_header, "bold");
+    gtk_widget_add_css_class(question_header, "bold");
+    gtk_widget_add_css_class(answer_header, "bold");
+
+    gtk_widget_set_size_request(id_header, 8, 8);
+    gtk_widget_set_hexpand(id_header, FALSE);
+    gtk_widget_set_hexpand(question_header, TRUE);
+    gtk_widget_set_hexpand(answer_header, TRUE);
+
+    gtk_grid_attach(GTK_GRID(header_grid), id_header, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(header_grid), question_header, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(header_grid), answer_header, 2, 0, 1, 1);
 
     // Add the header box to the vertical box
-    gtk_box_append(GTK_BOX(vbox), header_box);
+    gtk_box_append(GTK_BOX(vbox), header_grid);
 
     GListModel *model = create_model(ms);
 
     // --- Create the list view ---
+    // Create the factory
+    GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
+    g_signal_connect(factory, "setup", G_CALLBACK (setup_factory), NULL);
+    g_signal_connect(factory, "bind", G_CALLBACK (bind_factory), NULL);
+
     // Create a selection model
     GtkSingleSelection *selection_model = gtk_single_selection_new(model);
     gtk_single_selection_set_autoselect(selection_model, FALSE);
 
     // Create a column view
-    GtkWidget *column_view = gtk_column_view_new(GTK_SELECTION_MODEL(selection_model));
-
-    // Add columns
-    GtkColumnViewColumn *id_column = create_column("ID", "id");
-    GtkColumnViewColumn *name_column = create_column("Question", "question");
-    GtkColumnViewColumn *desc_column = create_column("Answer", "answer");
-
-    gtk_column_view_column_set_expand(id_column, TRUE);
-    gtk_column_view_column_set_expand(name_column, TRUE);
-    gtk_column_view_column_set_expand(desc_column, TRUE);
-
-    gtk_column_view_append_column (GTK_COLUMN_VIEW (column_view), id_column);
-    gtk_column_view_append_column (GTK_COLUMN_VIEW (column_view), name_column);
-    gtk_column_view_append_column (GTK_COLUMN_VIEW (column_view), desc_column);
+    GtkWidget *list_view = gtk_list_view_new(GTK_SELECTION_MODEL(selection_model), factory);
+    ms->list_view = GTK_LIST_VIEW(list_view);
 
     // Add the list view to the vertical box
-    gtk_box_append(GTK_BOX(vbox), column_view);
+    gtk_box_append(GTK_BOX(vbox), list_view);
 
     // Set the list view to expand
-    gtk_widget_set_hexpand(column_view, TRUE);
-    gtk_widget_set_vexpand(column_view, TRUE);
+    gtk_widget_set_hexpand(list_view, TRUE);
+    gtk_widget_set_vexpand(list_view, TRUE);
 
     return vbox;
 }
 
 GtkWidget *create_overview_box(ManageState *ms) {
+    ms->page = 0;
+    ms->page_size = 20;
+    ms->sort_column = ID;
+    ms->sort_direction = SORT_ASC;
+
     GtkWidget *box =
         gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
 
@@ -194,22 +317,11 @@ GtkWidget *create_overview_box(ManageState *ms) {
 
     gtk_box_append(GTK_BOX(box), title);
 
-    GtkWidget *scrolled_window = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_policy(
-        GTK_SCROLLED_WINDOW(scrolled_window),
-        GTK_POLICY_NEVER,      // No horizontal scrollbar
-        GTK_POLICY_AUTOMATIC   // Vertical scrollbar appears when needed
-    );
-
     GtkWidget *question_view = create_question_view(ms);
     gtk_widget_set_hexpand(question_view, TRUE);
     gtk_widget_set_vexpand(question_view, TRUE);
 
-    gtk_scrolled_window_set_child(
-        GTK_SCROLLED_WINDOW(scrolled_window),
-        question_view);
-
-    gtk_box_append(GTK_BOX(box), scrolled_window);
+    gtk_box_append(GTK_BOX(box), question_view);
 
     return box;
 }

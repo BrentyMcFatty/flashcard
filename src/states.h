@@ -61,6 +61,8 @@ typedef struct {
 
     GtkListView *list_view;
     GtkLabel *page_label;
+
+    GtkSingleSelection *selection_model;
 } ManageState;
 
 #endif // GTKFLASHCARDS_STATES_H

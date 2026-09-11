@@ -75,6 +75,8 @@ static void set_total_rows(ManageState *ms) {
         int count = sqlite3_column_int(stmt, 0);
         ms->total_rows = count;
     }
+
+    sqlite3_finalize(stmt);
 }
 
 static char *get_sort_direction(SortDirection direction) {
@@ -125,6 +127,25 @@ static GListModel *create_model(ManageState *ms) {
     return G_LIST_MODEL(store);
 }
 
+static void delete_question(ManageState *ms, gint id) {
+    // prepare query
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "DELETE "
+                      "FROM flashcards "
+                      "WHERE id = ? ";
+
+    if (sqlite3_prepare_v2(ms->s->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        show_message(GTK_WINDOW(ms->window), "Could not read the flashcard database.");
+        sqlite3_finalize(stmt);
+    }
+
+    sqlite3_bind_int(stmt, 1, id);
+
+    sqlite3_step(stmt);
+
+    sqlite3_finalize(stmt);
+}
+
 static void
 update_pagination_controls(ManageState *ms)
 {
@@ -139,8 +160,9 @@ reload_page(ManageState *ms)
         ms
     );
 
-    GtkSingleSelection *selection_model = gtk_single_selection_new(model);
-    gtk_list_view_set_model(ms->list_view, GTK_SELECTION_MODEL(selection_model));
+    ms->selection_model = gtk_single_selection_new(model);
+    gtk_single_selection_set_autoselect(ms->selection_model, FALSE);
+    gtk_list_view_set_model(ms->list_view, GTK_SELECTION_MODEL(ms->selection_model));
     update_pagination_controls(ms);
 }
 
@@ -167,6 +189,46 @@ sort_clicked(GtkButton *button, gpointer user_data)
     ms->page = 0;
 
     reload_page(ms);
+}
+
+static void
+delete_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+
+    ManageState *ms = user_data;
+
+    guint position =
+        gtk_single_selection_get_selected(ms->selection_model);
+
+    if (position == GTK_INVALID_LIST_POSITION) {
+        return; // Nothing selected
+    }
+
+    RowData *row =
+        g_list_model_get_item(
+            gtk_single_selection_get_model(ms->selection_model),
+            position
+        );
+
+    if (row == NULL) {
+        return;
+    }
+
+    g_print("Selected ID: %d\n", row->id);
+
+    delete_question(ms, row->id);
+
+    g_object_unref(row);
+
+    reload_page(ms);
+}
+
+static void
+modify_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)button;
+    (void)user_data;
 }
 
 static void
@@ -304,11 +366,11 @@ static GtkWidget *create_question_view(ManageState *ms) {
     g_signal_connect(factory, "bind", G_CALLBACK (bind_factory), NULL);
 
     // Create a selection model
-    GtkSingleSelection *selection_model = gtk_single_selection_new(model);
-    gtk_single_selection_set_autoselect(selection_model, FALSE);
+    ms->selection_model = gtk_single_selection_new(model);
+    gtk_single_selection_set_autoselect(ms->selection_model, FALSE);
 
     // Create a column view
-    GtkWidget *list_view = gtk_list_view_new(GTK_SELECTION_MODEL(selection_model), factory);
+    GtkWidget *list_view = gtk_list_view_new(GTK_SELECTION_MODEL(ms->selection_model), factory);
     ms->list_view = GTK_LIST_VIEW(list_view);
 
     // Add the list view to the vertical box
@@ -319,6 +381,69 @@ static GtkWidget *create_question_view(ManageState *ms) {
     gtk_widget_set_vexpand(list_view, TRUE);
 
     return vbox;
+}
+
+static GtkWidget *create_paging_box(ManageState *ms) {
+    GtkWidget *paging_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_hexpand(paging_box, TRUE);
+
+    GtkWidget *previous_button = gtk_button_new_with_label("Previous");
+    GtkWidget *next_button = gtk_button_new_with_label("Next");
+    GtkWidget *page_label = gtk_label_new("1");
+    gtk_widget_set_hexpand(previous_button, TRUE);
+    gtk_widget_set_hexpand(next_button, TRUE);
+    gtk_widget_set_hexpand(page_label, TRUE);
+
+    ms->page_label = GTK_LABEL(page_label);
+
+    g_signal_connect(
+        previous_button,
+        "clicked",
+        G_CALLBACK(previous_clicked),
+        ms
+    );
+
+    g_signal_connect(
+        next_button,
+        "clicked",
+        G_CALLBACK(next_clicked),
+        ms
+    );
+
+    gtk_box_append(GTK_BOX(paging_box), previous_button);
+    gtk_box_append(GTK_BOX(paging_box), page_label);
+    gtk_box_append(GTK_BOX(paging_box), next_button);
+
+    return paging_box;
+}
+
+static GtkWidget *create_delete_modify_box(ManageState *ms) {
+    GtkWidget *delete_modify_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_hexpand(delete_modify_box, TRUE);
+
+    GtkWidget *delete_button = gtk_button_new_with_label("Delete");
+    GtkWidget *modify_button = gtk_button_new_with_label("Modify");
+    gtk_widget_set_hexpand(delete_button, TRUE);
+    gtk_widget_set_hexpand(modify_button, TRUE);
+
+    g_signal_connect(
+        delete_button,
+        "clicked",
+        G_CALLBACK(delete_clicked),
+        ms
+    );
+
+    g_signal_connect(
+        modify_button,
+        "clicked",
+        G_CALLBACK(modify_clicked),
+        ms
+    );
+
+    gtk_box_append(GTK_BOX(delete_modify_box), delete_button);
+    gtk_box_append(GTK_BOX(delete_modify_box), modify_button);
+
+    return delete_modify_box;
 }
 
 GtkWidget *create_overview_box(ManageState *ms) {
@@ -351,37 +476,13 @@ GtkWidget *create_overview_box(ManageState *ms) {
 
     gtk_box_append(GTK_BOX(box), question_view);
 
-    GtkWidget *paging_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    gtk_widget_set_hexpand(paging_box, TRUE);
-
-    GtkWidget *previous_button = gtk_button_new_with_label("Previous");
-    GtkWidget *next_button = gtk_button_new_with_label("Next");
-    GtkWidget *page_label = gtk_label_new("1");
-    gtk_widget_set_hexpand(previous_button, TRUE);
-    gtk_widget_set_hexpand(next_button, TRUE);
-    gtk_widget_set_hexpand(page_label, TRUE);
-
-    ms->page_label = GTK_LABEL(page_label);
-
-    g_signal_connect(
-        previous_button,
-        "clicked",
-        G_CALLBACK(previous_clicked),
-        ms
-    );
-
-    g_signal_connect(
-        next_button,
-        "clicked",
-        G_CALLBACK(next_clicked),
-        ms
-    );
-
-    gtk_box_append(GTK_BOX(paging_box), previous_button);
-    gtk_box_append(GTK_BOX(paging_box), page_label);
-    gtk_box_append(GTK_BOX(paging_box), next_button);
+    GtkWidget *paging_box = create_paging_box(ms);
 
     gtk_box_append(GTK_BOX(box), paging_box);
+
+    GtkWidget *delete_modify_box = create_delete_modify_box(ms);
+
+    gtk_box_append(GTK_BOX(box), delete_modify_box);
 
     return box;
 }
